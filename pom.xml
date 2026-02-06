@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-<!--    <parent>-->
-<!--        <groupId>org.springframework.boot</groupId>-->
-<!--        <artifactId>spring-boot-starter-parent</artifactId>-->
-<!--        <version>2.7.2</version>-->
-<!--        <relativePath/>-->
-<!--    </parent>-->
+    <!--    <parent>-->
+    <!--        <groupId>org.springframework.boot</groupId>-->
+    <!--        <artifactId>spring-boot-starter-parent</artifactId>-->
+    <!--        <version>2.7.2</version>-->
+    <!--        <relativePath/>-->
+    <!--    </parent>-->
 
     <groupId>com.example</groupId>
     <artifactId>opcua-server-demo</artifactId>
@@ -21,6 +21,10 @@
         <milo.version>0.6.13</milo.version>
         <bouncycastle.version>1.70</bouncycastle.version>
         <spring.boot.version>2.7.2</spring.boot.version>
+
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <maven.compiler.encoding>UTF-8</maven.compiler.encoding>
 
     </properties>
 
@@ -37,11 +41,11 @@
     </dependencyManagement>
 
     <dependencies>
-       <!-- <dependency>
-            <groupId>com.ttulka.opcua</groupId>
-            <artifactId>opc-ua-spring-boot-starter</artifactId>
-            <version>0.0.3</version>
-        </dependency>-->
+        <!-- <dependency>
+             <groupId>com.ttulka.opcua</groupId>
+             <artifactId>opc-ua-spring-boot-starter</artifactId>
+             <version>0.0.3</version>
+         </dependency>-->
 
 
         <dependency>
@@ -49,21 +53,21 @@
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.eclipse.milo</groupId>
             <artifactId>sdk-server</artifactId>
             <version>${milo.version}</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>org.eclipse.milo</groupId>-->
-<!--            <artifactId>milo-sdk-server</artifactId>-->
-<!--            <version>1.0.7</version>-->
-<!--        </dependency>-->
+        <!--        兼容报错-->
+        <!--        <dependency>-->
+        <!--            <groupId>org.eclipse.milo</groupId>-->
+        <!--            <artifactId>milo-sdk-server</artifactId>-->
+        <!--            <version>1.0.7</version>-->
+        <!--        </dependency>-->
 
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
-        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -71,26 +75,68 @@
         </dependency>
 
         <!-- 日志依赖 (Milo 需要 SLF4J) -->
+        <!--        <dependency>-->
+        <!--            <groupId>org.slf4j</groupId>-->
+        <!--            <artifactId>slf4j-api</artifactId>-->
+        <!--            <version>1.7.36</version>-->
+        <!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>ch.qos.logback</groupId>-->
+        <!--            <artifactId>logback-classic</artifactId>-->
+        <!--            <version>1.2.11</version>-->
+        <!--        </dependency>-->
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.36</version>
-        </dependency>
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.2.11</version>
-        </dependency>
-        <dependency>
+            <!--            springboot自动版本管理-->
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.30</version>
-            <scope>compile</scope>
+            <!--            <version>1.18.30</version>-->
+            <!--            <scope>compile</scope>-->
         </dependency>
 
     </dependencies>
+    <profiles>
+        <profile>
+            <id>dev</id>
+            <properties>
+                <spring.profile>dev</spring.profile>
+            </properties>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+        </profile>
+        <profile>
+            <id>test</id>
+            <properties>
+                <spring.profile>test</spring.profile>
+            </properties>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+        </profile>
+        <profile>
+            <id>prod</id>
+            <properties>
+                <spring.profile>prod</spring.profile>
+            </properties>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+        </profile>
+    </profiles>
 
     <build>
+        <resources>
+            <!-- Maven 在构建时没有开启资源过滤（Filtering），导致占位符没被替换成实际的值（如 dev 或 prod），Spring Boot 无法解析这种包含 @ 符号的 YAML 语法-->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/*.yml</include>
+                    <include>**/*.properties</include>
+                    <include>**/*.xml</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -113,6 +159,15 @@
                     <source>11</source>
                     <target>11</target>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+<!--                <configuration>-->
+<!--                    <encoding>UTF-8</encoding>-->
+<!--                    <useDefaultDelimiters>true</useDefaultDelimiters>-->
+<!--                </configuration>-->
             </plugin>
         </plugins>
     </build>
