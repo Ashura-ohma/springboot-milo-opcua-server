@@ -1,6 +1,7 @@
 package com.example.opcua.namespace;
 
 import org.eclipse.milo.opcua.sdk.core.AccessLevel;
+import com.example.opcua.config.OpcUaServerProperties;
 import org.eclipse.milo.opcua.sdk.core.Reference;
 import org.eclipse.milo.opcua.sdk.server.OpcUaServer;
 import org.eclipse.milo.opcua.sdk.server.api.DataItem;
@@ -18,12 +19,15 @@ public class ExampleNamespace extends ManagedNamespaceWithLifecycle {
 
 
     public ExampleNamespace(OpcUaServer server) {
-        super(server, NAMESPACE_URI);
-
-        createAddressSpace();
+        this(server, new OpcUaServerProperties.DemoProperties());
     }
 
-    private void createAddressSpace() {
+    public ExampleNamespace(OpcUaServer server, OpcUaServerProperties.DemoProperties properties) {
+        super(server, properties.getNamespaceUri());
+        createAddressSpace(properties);
+    }
+
+    private void createAddressSpace(OpcUaServerProperties.DemoProperties properties) {
         // 2. 获取节点管理器
         var nodeManager = getNodeManager();
 
@@ -49,7 +53,8 @@ public class ExampleNamespace extends ManagedNamespaceWithLifecycle {
         NodeId varNodeId = newNodeId("MyDevice/SensorValue");
         UaVariableNode variableNode = new UaVariableNode.UaVariableNodeBuilder(getNodeContext())
                 .setNodeId(varNodeId)
-                .setAccessLevel(AccessLevel.READ_WRITE)
+                .setAccessLevel(properties.isWritable() ? AccessLevel.READ_WRITE : AccessLevel.READ_ONLY)
+                .setUserAccessLevel(properties.isWritable() ? AccessLevel.READ_WRITE : AccessLevel.READ_ONLY)
                 .setBrowseName(newQualifiedName("SensorValue"))
                 .setDisplayName(LocalizedText.english("Sensor Value"))
                 .setDataType(Identifiers.Double)
@@ -57,7 +62,7 @@ public class ExampleNamespace extends ManagedNamespaceWithLifecycle {
                 .build();
 
         // 设置初始值
-        variableNode.setValue(new DataValue(new Variant(123.45)));
+        variableNode.setValue(new DataValue(new Variant(properties.getInitialValue())));
 
         // 将变量加入到文件夹中
         nodeManager.addNode(variableNode);
@@ -87,3 +92,4 @@ public class ExampleNamespace extends ManagedNamespaceWithLifecycle {
     }
 
 }
+

@@ -31,6 +31,8 @@ import org.eclipse.milo.opcua.stack.server.EndpointConfiguration;
 import org.eclipse.milo.opcua.stack.server.security.DefaultServerCertificateValidator;
 import org.eclipse.milo.opcua.stack.server.security.ServerCertificateValidator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -51,7 +53,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.eclipse.milo.opcua.sdk.server.api.config.OpcUaServerConfig.*;
 
-@Configuration
+@ConditionalOnProperty(value = "spring.opcua.server.enabled", havingValue = "true", matchIfMissing = true)
 @ConditionalOnClass(OpcUaServer.class)
 @RequiredArgsConstructor
 @Slf4j
@@ -60,40 +62,26 @@ public class MiloServerAutoconfiguration {
     private final OpcUaServerProperties properties;
 
     @Bean
+    @ConditionalOnMissingBean(ExampleNamespace.class)
+    @ConditionalOnProperty(value = "spring.opcua.server.demo.enabled", havingValue = "true", matchIfMissing = true)
     ExampleNamespace exampleNamespace(OpcUaServer server) {
-        return new ExampleNamespace(server);
-    }
-
-//    @Bean
-//    UsernameIdentityValidator usernameIdentityValidator() {
-//        return new UsernameIdentityValidator(false, authChallenge -> {
-//            String username = authChallenge.getUsername();
-//            String password = authChallenge.getPassword();
-//
-//            boolean userOk = "user".equals(username) && "password1".equals(password);
-//            boolean adminOk = "admin".equals(username) && "password2".equals(password);
-//
-//            return userOk || adminOk;
-//        });
-//    }
-
-//    @Bean
-//    UsernameAuthenticator usernameAuthenticator() {
-//        return auth -> "user".equals(auth.getUsername()) && "pass123".equals(auth.getPassword());
-//    }
-
-    @Bean(initMethod = "startServer", destroyMethod = "stopServer")
-//    @ConditionalOnProperty(value = "spring.opcua.server.autostart.enabled", havingValue = "true", matchIfMissing = true)
-    MiloServerStarter miloServerStarter(OpcUaServer opcUaServer, List<ManagedNamespaceWithLifecycle> namespaces) {
-        return new MiloServerStarter(opcUaServer, namespaces);
+        return new ExampleNamespace(server, properties.getDemo());
     }
 
     @Bean
+    @ConditionalOnMissingBean(MiloServerStarter.class)
+    MiloServerStarter miloServerStarter(OpcUaServer server, List<ManagedNamespaceWithLifecycle> namespaces) {
+        return new MiloServerStarter(server, namespaces, properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     KeyStoreLoader keyStoreLoader() throws Exception {
         return new KeyStoreLoader(properties);
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean
     TrustListManager trustListManager() throws IOException {
         Path path = Paths.get(properties.getTrustListManager().getPath());
         Files.createDirectories(path);
@@ -101,11 +89,14 @@ public class MiloServerAutoconfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     ServerCertificateValidator serverCertificateValidator(TrustListManager trustListManager) {
         return new DefaultServerCertificateValidator(trustListManager);
     }
 
-    @Bean
+    // Fallback for context failure before the lifecycle owner is constructed.
+    @Bean(destroyMethod = "shutdown")
+    @ConditionalOnMissingBean
     OpcUaServer opcUaServer(
             TrustListManager trustListManager,
             KeyStoreLoader keyStoreLoader,
@@ -116,6 +107,10 @@ public class MiloServerAutoconfiguration {
         String applicationUri = CertificateUtil
                 .getSanUri(serverCertificate)
                 .orElseThrow(() -> new UaRuntimeException(StatusCodes.Bad_ConfigurationError, "certificate is missing the application URI"));
+
+        if (!applicationUri.equals(properties.getApplicationUri())) {
+            throw new IllegalArgumentException("Configured application-uri does not match the server certificate URI; supply the correct certificate or configuration");
+        }
 
         OpcUaServerConfigBuilder builder = OpcUaServerConfig.builder()
                 .setApplicationUri(applicationUri)
@@ -138,7 +133,7 @@ public class MiloServerAutoconfiguration {
             X509Certificate httpsCertificate = keyStoreLoader.getHttpsCertificate();
             KeyPair httpsKeyPair = keyStoreLoader.getHttpsKeyPair();
             builder.setHttpsKeyPair(httpsKeyPair)
-                    .setHttpsCertificateChain(new X509Certificate[]{httpsCertificate});
+                    .setHttpsCertificateChain(keyStoreLoader.getHttpsCertificateChain());
         }
 
         return new OpcUaServer(builder.build());
@@ -147,14 +142,12 @@ public class MiloServerAutoconfiguration {
     private Set<EndpointConfiguration> createEndpointConfigurations(X509Certificate certificate) {
         Set<EndpointConfiguration> endpointConfigurations = new LinkedHashSet<>();
 
-        Set<String> hostnames = new LinkedHashSet<>();
-        hostnames.add(HostnameUtil.getHostname());
-        hostnames.addAll(HostnameUtil.getHostnames("0.0.0.0"));
+        Set<String> hostnames = new LinkedHashSet<>(properties.getAdvertisedHosts());
 
         for (String hostname : hostnames) {
             EndpointConfiguration.Builder builder = EndpointConfiguration.newBuilder()
-                    .setBindAddress("0.0.0.0")
-                    .setHostname(hostname)
+                    .setBindAddress(properties.getBindAddress())
+                    .setHostname(hostname.indexOf(':') >= 0 && !hostname.startsWith("[") ? "[" + hostname + "]" : hostname)
                     .setPath(properties.getPath())
                     .setCertificate(certificate)
                     .addTokenPolicies(from(properties.getAuthentication().getTokenPolicies()));
@@ -167,6 +160,7 @@ public class MiloServerAutoconfiguration {
             // It's required to provide a discovery-specific endpoint with no security.
             EndpointConfiguration.Builder discoveryBuilder = builder.copy()
                     .setPath(properties.getDiscoveryPath())
+                    .addTokenPolicies(USER_TOKEN_POLICY_ANONYMOUS)
                     .setSecurityPolicy(SecurityPolicy.None)
                     .setSecurityMode(MessageSecurityMode.None);
             endpointConfigurations.add(buildTcpEndpoint(discoveryBuilder));
@@ -316,3 +310,4 @@ public class MiloServerAutoconfiguration {
         }
     }
 }
+
