@@ -8,6 +8,8 @@ public interface UsernameAuthenticator extends Authenticator<UsernameAuthenticat
     class Credentials {
 
         String username;
+        @lombok.ToString.Exclude
         String password;
     }
 }
+

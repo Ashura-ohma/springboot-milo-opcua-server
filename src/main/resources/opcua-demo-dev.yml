@@ -1,0 +1,9 @@
+# Explicit local development profile. Supply OPCUA_KEYSTORE_PASSWORD yourself.
+spring:
+  opcua:
+    server:
+      key-store:
+        generate: true
+      security:
+        policy: None
+        mode: None

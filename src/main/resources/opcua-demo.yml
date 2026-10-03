@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: opcua-server
+  opcua:
+    server:
+      enabled: ${OPCUA_ENABLED:true}
+      bind-address: ${OPCUA_BIND_ADDRESS:127.0.0.1}
+      advertised-hosts: ${OPCUA_ADVERTISED_HOSTS:localhost}
+      application-uri: ${OPCUA_APPLICATION_URI:urn:spring:opcua:server}
+      tcp:
+        port: ${OPCUA_TCP_PORT:4840}
+      key-store:
+        path: ${OPCUA_KEYSTORE_PATH:./data/opcua/server.p12}
+        password: ${OPCUA_KEYSTORE_PASSWORD:}
+        generate: false
+      trust-list-manager:
+        path: ${OPCUA_TRUST_PATH:./data/opcua/pki}

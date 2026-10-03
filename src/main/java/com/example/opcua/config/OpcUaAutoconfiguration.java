@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Import;
 @Import({OpcUaAutoconfiguration.DefaultAuthenticatorsConfig.class, MiloServerAutoconfiguration.class})
 public class OpcUaAutoconfiguration {
 
-    @Configuration
+    @ConditionalOnProperty(value = "spring.opcua.server.enabled", havingValue = "true", matchIfMissing = true)
     static class DefaultAuthenticatorsConfig {
 
         @Bean
@@ -34,3 +34,4 @@ public class OpcUaAutoconfiguration {
         }
     }
 }
+

@@ -1,0 +1,13 @@
+# Provision a certificate/keystore and trust list before startup.
+spring:
+  opcua:
+    server:
+      key-store:
+        generate: false
+      security:
+        policy: Basic256Sha256
+        mode: SignAndEncrypt
+      authentication:
+        token-policies: [username]
+      demo:
+        enabled: false

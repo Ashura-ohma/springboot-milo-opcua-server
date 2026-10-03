@@ -11,7 +11,6 @@
 package com.example.opcua.milo;
 
 import com.example.opcua.config.OpcUaServerProperties;
-import com.google.common.collect.Sets;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.milo.opcua.sdk.server.util.HostnameUtil;
@@ -28,25 +27,21 @@ import java.security.*;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Set;
-import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Getter
 @Slf4j
-class KeyStoreLoader {
-
-    private static final Pattern IP_ADDR_PATTERN = Pattern.compile(
-            "^(([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.){3}([01]?\\d\\d?|2[0-4]\\d|25[0-5])$");
+public class KeyStoreLoader {
 
     private final X509Certificate[] serverCertificateChain;
     private final X509Certificate serverCertificate;
     private final KeyPair serverKeyPair;
 
+    private final X509Certificate[] httpsCertificateChain;
     private final X509Certificate httpsCertificate;
     private final KeyPair httpsKeyPair;
 
     public KeyStoreLoader(OpcUaServerProperties properties) throws Exception {
-        Path path = Paths.get(properties.getKeyStore().getPath());
+        Path path = Paths.get(properties.getKeyStore().getPath()).toAbsolutePath();
         char[] pass = properties.getKeyStore().getPassword().toCharArray();
         String serverAlias = properties.getKeyStore().getServerAlias();
         String httpsAlias = properties.getKeyStore().getHttpsAlias();
@@ -65,20 +60,17 @@ class KeyStoreLoader {
 
             KeyPair keyPair = SelfSignedCertificateGenerator.generateRsaKeyPair(2048);
 
-            String applicationUri = properties.getProductUri() + ":" + UUID.randomUUID();
+            String applicationUri = properties.getApplicationUri();
 
             SelfSignedCertificateBuilder builder = new SelfSignedCertificateBuilder(keyPair)
                     .setCommonName(properties.getApplicationName())
                     .setApplicationUri(applicationUri);
 
             // Get as many hostnames and IP addresses as we can listed in the certificate.
-            Set<String> hostnames = Sets.union(
-                    Sets.newHashSet(HostnameUtil.getHostname()),
-                    HostnameUtil.getHostnames("0.0.0.0", false)
-            );
+            Set<String> hostnames = new java.util.LinkedHashSet<>(properties.getAdvertisedHosts());
 
             for (String hostname : hostnames) {
-                if (IP_ADDR_PATTERN.matcher(hostname).matches()) {
+                if (com.google.common.net.InetAddresses.isInetAddress(hostname)) {
                     builder.addIpAddress(hostname);
                 } else {
                     builder.addDnsName(hostname);
@@ -95,15 +87,25 @@ class KeyStoreLoader {
 
                 SelfSignedHttpsCertificateBuilder httpsCertificateBuilder = new SelfSignedHttpsCertificateBuilder(httpsKeyPair);
                 httpsCertificateBuilder.setCommonName(HostnameUtil.getHostname());
-                HostnameUtil.getHostnames("0.0.0.0").forEach(httpsCertificateBuilder::addDnsName);
+                for (String hostname : properties.getAdvertisedHosts()) {
+                    if (com.google.common.net.InetAddresses.isInetAddress(hostname)) {
+                        httpsCertificateBuilder.addIpAddress(hostname);
+                    } else {
+                        httpsCertificateBuilder.addDnsName(hostname);
+                    }
+                }
                 X509Certificate httpsCertificate = httpsCertificateBuilder.build();
 
                 keyStore.setKeyEntry(httpsAlias, httpsKeyPair.getPrivate(), pass, new X509Certificate[]{httpsCertificate});
             }
 
-            keyStore.store(Files.newOutputStream(path), pass);
+            try (java.io.OutputStream output = Files.newOutputStream(path)) {
+                keyStore.store(output, pass);
+            }
         } else {
-            keyStore.load(Files.newInputStream(path), pass);
+            try (java.io.InputStream input = Files.newInputStream(path)) {
+                keyStore.load(input, pass);
+            }
         }
 
         Key serverPrivateKey = keyStore.getKey(serverAlias, pass);
@@ -126,13 +128,17 @@ class KeyStoreLoader {
             if (!(httpPrivateKey instanceof PrivateKey)) {
                 throw new RuntimeException("Key is not of type PrivateKey");
             }
-            httpsCertificate = (X509Certificate) keyStore.getCertificate(httpsAlias);
+            httpsCertificateChain = Arrays.stream(keyStore.getCertificateChain(httpsAlias))
+                    .map(X509Certificate.class::cast).toArray(X509Certificate[]::new);
+            httpsCertificate = httpsCertificateChain[0];
             PublicKey httpPublicKey = httpsCertificate.getPublicKey();
             httpsKeyPair = new KeyPair(httpPublicKey, (PrivateKey) httpPrivateKey);
 
         } else {
+            httpsCertificateChain = new X509Certificate[0];
             httpsCertificate = null;
             httpsKeyPair = null;
         }
     }
 }
+
